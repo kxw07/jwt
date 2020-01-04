@@ -1,29 +1,31 @@
 package com.example.service;
 
 import com.google.gson.Gson;
+import org.springframework.stereotype.Service;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+@Service
 public class JWTService {
     static Gson gson = new Gson();
+    private String secret = "mysecret";
 
     public String generateToken() {
         try {
-            String encodedHeader = encode( getHeader().getBytes(StandardCharsets.UTF_8) );
-            String encodedClaims = encode( getBody().getBytes(StandardCharsets.UTF_8) );
+            String base64urlHeader = encodeBase64URL( getHeader().getBytes(StandardCharsets.UTF_8) );
+            String base64urlPayload = encodeBase64URL( getPayload().getBytes(StandardCharsets.UTF_8) );
 
-            String concatenated = encodedHeader + '.' + encodedClaims;
+            String concatenated = base64urlHeader + '.' + base64urlPayload;
 
-            byte[] signature = encodeHmacSha256( concatenated, "mysecret" );
+            byte[] signature = encodeHmacSha256( concatenated, secret );
 
-            String token = concatenated + '.' + encode( signature );
+            String token = concatenated + '.' + encodeBase64URL( signature );
 
             return token;
         } catch (Exception e) {
@@ -33,23 +35,18 @@ public class JWTService {
         }
     }
 
-    public Map decodeToken(String token) throws Exception {
+    public boolean verifyToken (String token) throws Exception {
         String[] stringArray = token.split("\\.");
 
-        String header = stringArray[0];
-        String body = stringArray[1];
-        String signature = stringArray[2];
+        String base64urlHeader = stringArray[0];
+        String base64urlPayload = stringArray[1];
+        String base64urlSignature = stringArray[2];
 
-        header = new String(decode(header));
-        body = new String(decode(body));
-        signature = new String(decodeHmacSha256(decode(signature), "mysecret"));
+        String concatenated = base64urlHeader + '.' + base64urlPayload;
 
-        Map<String, Object> decodeToken = new HashMap<>();
-        decodeToken.put("header", header);
-        decodeToken.put("body", body);
-        decodeToken.put("signature", signature);
+        byte[] calculatedSignature = encodeHmacSha256( concatenated, secret );
 
-        return decodeToken;
+        return base64urlSignature.matches(encodeBase64URL( calculatedSignature ));
     }
 
     private byte[] encodeHmacSha256(String data, String secret) throws Exception {
@@ -64,18 +61,6 @@ public class JWTService {
         return signedBytes;
     }
 
-    private byte[] decodeHmacSha256(byte[] data, String secret) throws Exception {
-        byte[] hash = secret.getBytes(StandardCharsets.UTF_8);
-
-        Mac sha256Hmac = Mac.getInstance("HmacSHA256");
-        SecretKeySpec secretKey = new SecretKeySpec(hash, "HmacSHA256");
-        sha256Hmac.init(secretKey);
-        
-        byte[] signedBytes = sha256Hmac.doFinal(data);
-
-        return signedBytes;
-    }
-
     private String getHeader() {
         Map<String, String> header = new LinkedHashMap<>();
         header.put("alg", "HS256");
@@ -84,20 +69,20 @@ public class JWTService {
         return gson.toJson(header);
     }
 
-    private String getBody() {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("sub", "test");
-        body.put("name", "Kai");
-        body.put("iat", Instant.now().getEpochSecond());
+    private String getPayload() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sub", "test");
+        payload.put("name", "Kai");
+        payload.put("iat", Instant.now().getEpochSecond());
 
-        return gson.toJson(body);
+        return gson.toJson(payload);
     }
 
-    private String encode(byte[] bytes) {
+    private String encodeBase64URL(byte[] bytes) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    private byte[] decode(String str) {
+    private byte[] decodeBase64URL(String str) {
         return Base64.getUrlDecoder().decode(str);
     }
 }
